@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADAS - Blind Spot Detection System</title>
+    <style>
+        /* --- RESET & BASIC LAYOUT --- */
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background-color: #0f172a;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: white;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            flex-direction: column;
+        }
+
+        .main-display {
+            display: flex;
+            flex: 1;
+            width: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* --- CONTROL BAR --- */
+        .control-bar {
+            position: absolute;
+            top: 20px;
+            left: -300px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            border: 1px solid #334155;
+            transition: left 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        body.engine-running .control-bar {
+            left: 20px;
+        }
+
+        .ctrl-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+            text-align: left;
+            min-width: 160px;
+        }
+
+        #btn-stop {
+            background: #334155;
+            color: #cbd5e1;
+            border: 1px solid #475569;
+        }
+
+        #btn-stop:hover {
+            background: #ef4444;
+            color: white;
+            border-color: #ef4444;
+        }
+
+        #btn-sound {
+            background: #0f172a;
+            color: #3b82f6;
+            border: 1px solid #1e293b;
+        }
+
+        #btn-sound:hover {
+            background: #1e293b;
+        }
+
+        #btn-sound.muted {
+            color: #64748b;
+            text-decoration: line-through;
+        }
+
+        /* --- BOTTOM PANEL --- */
+        .bottom-panel {
+            height: 100px;
+            background: #1e293b;
+            border-top: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            z-index: 100;
+            transform: translateY(100%);
+            transition: transform 0.5s ease;
+        }
+
+        body.engine-running .bottom-panel {
+            transform: translateY(0);
+        }
+
+        .sensor-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            background: #0f172a;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+
+        .sensor-label {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            letter-spacing: 1px;
+            font-weight: bold;
+        }
+
+        .sensor-status {
+            font-size: 0.9rem;
+            font-weight: 600;
+            min-height: 20px;
+        }
+
+        .sensor-status.safe {
+            color: #10b981;
+        }
+
+        .sensor-status.warning {
+            color: #eab308;
+        }
+
+        .sensor-status.danger {
+            color: #ef4444;
+        }
+
+        /* --- RADAR VISUALS --- */
+        .radar-panel {
+            width: 30%;
+            background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+            border-right: 1px solid #334155;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        @keyframes roadMoving {
+            from {
+                background-position: 0 0;
+            }
+
+            to {
+                background-position: 0 80px;
+            }
+        }
+
+        .lane-marker {
+            position: absolute;
+            width: 4px;
+            height: 150%;
+            top: -20%;
+            background: repeating-linear-gradient(to bottom, #334155 0px, #334155 40px, transparent 40px, transparent 80px);
+            z-index: 0;
+            animation: roadMoving 0.5s linear infinite paused;
+        }
+
+        .lane-left {
+            left: 15%;
+        }
+
+        .lane-right {
+            right: 15%;
+        }
+
+        @keyframes carVibration {
+            0% {
+                transform: translateY(0px);
+            }
+
+            25% {
+                transform: translateY(1px);
+            }
+
+            50% {
+                transform: translateY(0px);
+            }
+
+            75% {
+                transform: translateY(-1px);
+            }
+
+            100% {
+                transform: translateY(0px);
+            }
+        }
+
+        .car-wrapper {
+            position: relative;
+            width: 100px;
+            height: 180px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            animation: carVibration 0.5s ease-in-out infinite paused;
+        }
+
+        body.engine-running .lane-marker,
+        body.engine-running .car-wrapper {
+            animation-play-state: running;
+        }
+
+        .car-svg {
+            width: 100%;
+            height: 100%;
+            fill: #475569;
+            filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.8));
+            z-index: 10;
+            transition: fill 0.8s;
+        }
+
+        body.engine-running .car-svg {
+            fill: #cbd5e1;
+        }
+
+        .radar-cone {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            background: radial-gradient(circle at left, var(--radar-color, transparent) 0%, transparent 70%);
+            opacity: 0;
+            z-index: 1;
+            clip-path: polygon(0 50%, 100% 0, 100% 100%);
+            transform-origin: 0% 50%;
+            transform: var(--base-transform);
+            transition: opacity 0.3s ease;
+        }
+
+        .radar-front {
+            left: 110%;
+            top: -50px;
+            --base-transform: translateX(-50%) rotate(-90deg);
+        }
+
+        .radar-back {
+            left: 110%;
+            bottom: -30px;
+            --base-transform: translateX(-50%) rotate(90deg);
+        }
+
+        .radar-left {
+            left: 20%;
+            top: 50%;
+            --base-transform: translateY(-50%) rotate(180deg);
+        }
+
+        .radar-right {
+            left: 80%;
+            top: 50%;
+            --base-transform: translateY(-50%) rotate(0deg);
+        }
+
+        .radar-cone.level-1 {
+            opacity: 1;
+            --radar-color: rgba(255, 193, 7, 0.7);
+        }
+
+        .radar-cone.level-2 {
+            opacity: 1;
+            --radar-color: rgba(239, 68, 68, 0.8);
+            animation: pulseRedFixed 0.4s infinite alternate;
+        }
+
+        @keyframes pulseRedFixed {
+            from {
+                opacity: 0.6;
+                transform: var(--base-transform) scale(1);
+            }
+
+            to {
+                opacity: 1;
+                transform: var(--base-transform) scale(1.15);
+            }
+        }
+
+        /* --- NOTIFICATION UI --- */
+        .status-text {
+            text-align: center;
+            z-index: 10;
+            height: 60px;
+            margin-top: 30px;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+
+        .status-label {
+            font-size: 0.8rem;
+            color: #64748b;
+            letter-spacing: 2px;
+            align-self: center;
+        }
+
+        .smart-alert {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid #334155;
+            padding: 10px 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+            min-width: 200px;
+            animation: popIn 0.3s;
+        }
+
+        @keyframes popIn {
+            from {
+                transform: scale(0.8);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .alert-msg {
+            font-size: 1.2rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .smart-alert.yellow {
+            display: flex;
+            border-color: #ffc107;
+        }
+
+        .smart-alert.yellow .alert-msg {
+            color: #ffc107;
+        }
+
+        .smart-alert.red {
+            display: flex;
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.15);
+        }
+
+        .smart-alert.red .alert-msg {
+            color: #ef4444;
+        }
+
+        /* --- CAMERA CONTAINER --- */
+        .camera-panel-container {
+            width: 70%;
+            position: relative;
+            background: #000;
+            overflow: hidden;
+        }
+
+        .start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #1e293b 0%, #000 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            transition: opacity 0.8s;
+        }
+
+        .btn-start {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 4px solid #3b82f6;
+            background: transparent;
+            color: #3b82f6;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+            transition: all 0.3s;
+            animation: breathe 2s infinite;
+        }
+
+        .btn-start:hover {
+            background: #3b82f6;
+            color: white;
+            box-shadow: 0 0 40px rgba(59, 130, 246, 0.6);
+        }
+
+        @keyframes breathe {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        body.engine-running .start-screen {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* --- CAMERA GRID --- */
+        .camera-grid-wrapper {
+            width: 100%;
+            height: 100%;
+            padding: 10px;
+            opacity: 0;
+            transform: scale(0.95);
+            transition: all 0.5s;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 15px;
+        }
+
+        body.engine-running .camera-grid-wrapper {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .camera-box {
+            background: #000;
+            border: 2px solid #333;
+            border-radius: 8px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .camera-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .cam-tag {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border: 1px solid #555;
+            z-index: 2;
+        }
+
+        /* Warning borders */
+        .camera-box.level-1 {
+            border-color: #eab308 !important;
+            border-width: 4px;
+        }
+
+        .camera-box.level-1 .cam-tag {
+            background: #eab308;
+            color: black;
+            border-color: #eab308;
+        }
+
+        @keyframes flashRedBorder {
+            0% {
+                border-color: #7f1d1d;
+                box-shadow: inset 0 0 0 rgba(220, 38, 38, 0);
+            }
+
+            50% {
+                border-color: #ef4444;
+                box-shadow: 0 0 30px rgba(220, 38, 38, 0.8), inset 0 0 30px rgba(220, 38, 38, 0.4);
+            }
+
+            100% {
+                border-color: #7f1d1d;
+                box-shadow: inset 0 0 0 rgba(220, 38, 38, 0);
+            }
+        }
+
+        .camera-box.level-2 {
+            animation: flashRedBorder 0.4s infinite linear;
+            border-width: 5px;
+        }
+
+        .camera-box.level-2 .cam-tag {
+            background: #ef4444;
+            color: white;
+            border-color: #ef4444;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="main-display">
+        <div class="control-bar">
+            <div style="font-size:0.7rem; color:#64748b; margin-bottom:5px;">SYSTEM CONTROLS</div>
+            <button id="btn-sound" class="ctrl-btn" onclick="toggleSound()">🔊 SOUND: ON</button>
+            <button id="btn-stop" class="ctrl-btn" onclick="stopEngine()">🛑 STOP ENGINE</button>
+        </div>
+
+        <div class="radar-panel">
+            <div class="lane-marker lane-left"></div>
+            <div class="lane-marker lane-right"></div>
+            <div class="car-wrapper">
+                <div class="radar-cone radar-front" id="radar-front"></div>
+                <div class="radar-cone radar-back" id="radar-back"></div>
+                <div class="radar-cone radar-left" id="radar-left"></div>
+                <div class="radar-cone radar-right" id="radar-right"></div>
+                <svg class="car-svg" viewBox="0 0 24 48" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M7 0C5 0 3 2 3 5V10L1 12V36L3 38V44C3 45.1 3.9 46 5 46H7V42H17V46H19C20.1 46 21 45.1 21 44V38L23 36V12L21 10V5C21 2 19 0 17 0H7ZM5 5H19V10H5V5ZM5 12H19V34H5V12Z" />
+                    <path d="M6 14 H18 V20 H6 Z" fill="#64748b" opacity="0.5" />
+                </svg>
+            </div>
+            <div class="status-text">
+                <div class="status-label" id="status-label">SYSTEM STANDBY</div>
+                <div id="smart-alert-box" class="smart-alert">
+                    <div class="alert-msg" id="alert-msg-text">CAUTION</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="camera-panel-container">
+            <div class="start-screen"><button class="btn-start" onclick="startEngine()">START<br>ENGINE</button></div>
+
+            <div class="camera-grid-wrapper" id="camContainer">
+                <div class="camera-box" id="cam-front">
+                    <img src="/video_feed/front" alt="Front Camera">
+                    <span class="cam-tag">FRONT</span>
+                </div>
+                <div class="camera-box" id="cam-back">
+                    <img src="/video_feed/back" alt="Back Camera">
+                    <span class="cam-tag">REAR</span>
+                </div>
+                <div class="camera-box" id="cam-left">
+                    <img src="/video_feed/left" alt="Left Camera">
+                    <span class="cam-tag">LEFT</span>
+                </div>
+                <div class="camera-box" id="cam-right">
+                    <img src="/video_feed/right" alt="Right Camera">
+                    <span class="cam-tag">RIGHT</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bottom-panel">
+        <div class="sensor-group">
+            <span class="sensor-label">FRONT</span>
+            <div class="sensor-status safe" id="status-front">SAFE</div>
+        </div>
+        <div class="sensor-group">
+            <span class="sensor-label">LEFT</span>
+            <div class="sensor-status safe" id="status-left">SAFE</div>
+        </div>
+        <div class="sensor-group">
+            <span class="sensor-label">RIGHT</span>
+            <div class="sensor-status safe" id="status-right">SAFE</div>
+        </div>
+        <div class="sensor-group">
+            <span class="sensor-label">REAR</span>
+            <div class="sensor-status safe" id="status-back">SAFE</div>
+        </div>
+    </div>
+
+    <script>
+        const statusLabel = document.getElementById('status-label');
+        const btnSound = document.getElementById('btn-sound');
+        const smartAlertBox = document.getElementById('smart-alert-box');
+        const alertMsgText = document.getElementById('alert-msg-text');
+
+        // --- AUDIO ---
+        let audioCtx;
+        let isMuted = false;
+        let alertInterval = null;
+
+        function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+        function playTone(freq, duration) {
+            if (isMuted || !audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+        function toggleSound() {
+            isMuted = !isMuted;
+            btnSound.textContent = isMuted ? "🔇 SOUND: OFF" : "🔊 SOUND: ON";
+            btnSound.classList.toggle("muted");
+            if (isMuted && alertInterval) clearInterval(alertInterval);
+        }
+        function startRedLoop() {
+            if (alertInterval) clearInterval(alertInterval);
+            if (isMuted) return;
+            alertInterval = setInterval(() => playTone(880, 0.15), 400);
+        }
+
+        // --- STATE & LOGIC ---
+        let isEngineOn = false;
+        let lastMaxThreat = 0;
+
+        async function startEngine() {
+            isEngineOn = true;
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            document.body.classList.add('engine-running');
+            statusLabel.textContent = "ALL SENSORS ACTIVE";
+
+            // Call backend API
+            try {
+                const response = await fetch('/api/start', { method: 'POST' });
+                const data = await response.json();
+                console.log('Engine started:', data);
+            } catch (err) {
+                console.error('Error starting engine:', err);
+            }
+
+            // Start polling status
+            startStatusPolling();
+        }
+
+        async function stopEngine() {
+            isEngineOn = false;
+            document.body.classList.remove('engine-running');
+            statusLabel.textContent = "SYSTEM STANDBY";
+
+            // Call backend API
+            try {
+                const response = await fetch('/api/stop', { method: 'POST' });
+                const data = await response.json();
+                console.log('Engine stopped:', data);
+            } catch (err) {
+                console.error('Error stopping engine:', err);
+            }
+
+            // Reset UI
+            resetUI();
+            stopStatusPolling();
+        }
+
+        function resetUI() {
+            // Reset radars
+            ['front', 'back', 'left', 'right'].forEach(side => {
+                const radarEl = document.getElementById(`radar-${side}`);
+                radarEl.className = `radar-cone radar-${side}`;
+
+                const camEl = document.getElementById(`cam-${side}`);
+                camEl.classList.remove('level-1', 'level-2');
+
+                const statusEl = document.getElementById(`status-${side}`);
+                statusEl.textContent = 'SAFE';
+                statusEl.className = 'sensor-status safe';
+            });
+
+            statusLabel.style.display = 'block';
+            smartAlertBox.style.display = 'none';
+            smartAlertBox.className = 'smart-alert';
+
+            if (alertInterval) {
+                clearInterval(alertInterval);
+                alertInterval = null;
+            }
+        }
+
+        // --- STATUS POLLING ---
+        let statusPollInterval = null;
+
+        function startStatusPolling() {
+            if (statusPollInterval) return;
+
+            statusPollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/api/status');
+                    const data = await response.json();
+
+                    if (data.running) {
+                        updateSystemUI(data.cameras);
+                    }
+                } catch (err) {
+                    console.error('Error polling status:', err);
+                }
+            }, 200); // Poll every 200ms
+        }
+
+        function stopStatusPolling() {
+            if (statusPollInterval) {
+                clearInterval(statusPollInterval);
+                statusPollInterval = null;
+            }
+        }
+
+        function updateSystemUI(cameras) {
+            let currentMaxThreat = 0;
+
+            ['front', 'back', 'left', 'right'].forEach(side => {
+                const level = cameras[side].level;
+                const threat = cameras[side].threat;
+
+                if (level > currentMaxThreat) currentMaxThreat = level;
+
+                // Update radar
+                const radarEl = document.getElementById(`radar-${side}`);
+                radarEl.className = `radar-cone radar-${side} ${level === 1 ? 'level-1' : ''} ${level === 2 ? 'level-2' : ''}`;
+
+                // Update camera border
+                const camEl = document.getElementById(`cam-${side}`);
+                camEl.classList.remove('level-1', 'level-2');
+                if (level === 1) camEl.classList.add('level-1');
+                if (level === 2) camEl.classList.add('level-2');
+
+                // Update status text
+                const statusEl = document.getElementById(`status-${side}`);
+                statusEl.textContent = threat;
+                statusEl.className = `sensor-status ${threat.toLowerCase()}`;
+            });
+
+            // Audio & Alert Logic
+            if (currentMaxThreat < 2 && alertInterval) {
+                clearInterval(alertInterval);
+                alertInterval = null;
+            }
+
+            if (currentMaxThreat === 0) {
+                statusLabel.style.display = 'block';
+                smartAlertBox.style.display = 'none';
+                smartAlertBox.className = 'smart-alert';
+            } else if (currentMaxThreat === 1) {
+                statusLabel.style.display = 'none';
+                smartAlertBox.style.display = 'flex';
+                smartAlertBox.className = 'smart-alert yellow';
+                alertMsgText.textContent = "CAUTION";
+
+                if (currentMaxThreat > lastMaxThreat) {
+                    playTone(440, 0.3);
+                }
+            } else if (currentMaxThreat === 2) {
+                statusLabel.style.display = 'none';
+                smartAlertBox.style.display = 'flex';
+                smartAlertBox.className = 'smart-alert red';
+                alertMsgText.textContent = "COLLISION WARNING";
+
+                if (!alertInterval) startRedLoop();
+            }
+
+            lastMaxThreat = currentMaxThreat;
+        }
+    </script>
+</body>
+
+</html>
