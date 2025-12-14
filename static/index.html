@@ -529,8 +529,8 @@
     <div class="main-display">
         <div class="control-bar">
             <div style="font-size:0.7rem; color:#64748b; margin-bottom:5px;">SYSTEM CONTROLS</div>
-            <button id="btn-sound" class="ctrl-btn" onclick="toggleSound()">🔊 SOUND: ON</button>
-            <button id="btn-stop" class="ctrl-btn" onclick="stopEngine()">🛑 STOP ENGINE</button>
+            <button id="btn-sound" class="ctrl-btn" onclick="toggleSound()"> SOUND: ON</button>
+            <button id="btn-stop" class="ctrl-btn" onclick="stopEngine()"> STOP ENGINE</button>
         </div>
 
         <div class="radar-panel">
@@ -624,7 +624,7 @@
         }
         function toggleSound() {
             isMuted = !isMuted;
-            btnSound.textContent = isMuted ? "🔇 SOUND: OFF" : "🔊 SOUND: ON";
+            btnSound.textContent = isMuted ? " SOUND: OFF" : " SOUND: ON";
             btnSound.classList.toggle("muted");
             if (isMuted && alertInterval) clearInterval(alertInterval);
         }
